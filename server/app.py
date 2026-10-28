@@ -3,8 +3,9 @@
 from flask import Flask, make_response, request, session
 from flask_migrate import Migrate
 from flask_restful import Api, Resource
+from sqlalchemy import select
 
-from models import db, User, UserSchema
+from models import db, User, UserSchema, Document, DocumentSchema
 
 app = Flask(__name__)
 app.secret_key = b'Y\xf1Xz\x00\xad|eQ\x80t \xca\x1a\x10K'
@@ -21,10 +22,10 @@ api = Api(app)
 class Login(Resource):
 
     def post(self):
-        user = User.query.filter(
-            User.username == request.get_json()['username']
-        ).first()
-        
+        user = db.session.execute(
+            select(User).where(User.username == request.get_json()['username'])
+        ).scalar_one_or_none()
+
         if user:
             session['user_id'] = user.id
             return UserSchema().dump(user)
@@ -34,7 +35,7 @@ class Login(Resource):
 class CheckSession(Resource):
 
     def get(self):
-        user = User.query.filter(User.id == session.get('user_id')).first()
+        user = db.session.get(User, session.get('user_id'))
         if user:
             return UserSchema().dump(user)
         else:
@@ -48,18 +49,19 @@ class Logout(Resource):
 
 @app.before_request
 def check_if_logged_in():
-        if not session['user_id']:
-            return {'error': 'Unauthorized'}, 401
-        
+    if not session.get('user_id') and request.endpoint not in {'document_list', 'login', 'check_session'}:
+        return {'error': 'Unauthorized'}, 401
+
+
 class Document(Resource):
     def get(self, id):
-        document = Document.query.filter(Document.id == id).first()
+        document = db.session.get(Document, id)
         return DocumentSchema().dump(document)
 
-    def patch(self, id):   
-        document = Document.query.filter(Document.id == id).first()
+    def patch(self, id):
+        document = db.session.get(Document, id)
         for attr in request.form:
-            setattr(record, attr, request.form[attr])
+            setattr(document, attr, request.form[attr])
 
         db.session.add(document)
         db.session.commit()
@@ -72,8 +74,8 @@ class Document(Resource):
         return response
 
     def delete(self, id):
-        document = Document.query.filter(Document.id == id).first()
-        
+        document = db.session.get(Document, id)
+
         db.session.delete(document)
         db.session.commit()
 
@@ -81,13 +83,19 @@ class Document(Resource):
             {"message": "document successfully deleted"},
             200
         )
-        return response 
+        return response
 
+
+class DocumentList(Resource):
+    def get(self):
+        documents = db.session.execute(select(Document)).scalars().all()
+        return [DocumentSchema().dump(document) for document in documents]
 
 api.add_resource(Login, '/login')
 api.add_resource(CheckSession, '/check_session')
 api.add_resource(Logout, '/logout')
-api.add_resource(Document, '/documents/<int:id>')
+api.add_resource(Document, '/documents/<int:id>', endpoint='document')
+api.add_resource(DocumentList, '/documents', endpoint='document_list')
 
 if __name__ == '__main__':
     app.run(port=5555, debug=True)
