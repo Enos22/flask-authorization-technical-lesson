@@ -50,12 +50,15 @@ class Document(Resource):
     def get(self, id):
 
         if not session['user_id']:
-            return {'error': 'Unauthorized Access'}, 401
+            return {'error': 'Unauthorized'}, 401
     
         document = Document.query.filter(Document.id == id).first()
         return DocumentSchema().dump(document)
 
     def patch(self, id):
+        if not session['user_id']:
+            return {'error': 'Unauthorized'}, 401
+        
         document = Document.query.filter(Document.id == id).first()
         for attr in request.form:
             setattr(record, attr, request.form[attr])
@@ -71,6 +74,9 @@ class Document(Resource):
         return response
 
     def delete(self, id):
+        if not session['user_id']:
+            return {'error': 'Unauthorized'}, 401        
+        
         document = Document.query.filter(Document.id == id).first()
         
         db.session.delete(document)
