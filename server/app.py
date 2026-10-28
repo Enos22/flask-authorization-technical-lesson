@@ -48,6 +48,10 @@ class Logout(Resource):
 
 class Document(Resource):
     def get(self, id):
+
+        if not session['user_id']:
+            return {'error': 'Unauthorized Access'}, 401
+    
         document = Document.query.filter(Document.id == id).first()
         return DocumentSchema().dump(document)
 
